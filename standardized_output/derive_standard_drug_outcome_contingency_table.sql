@@ -32,39 +32,84 @@ from standard_drug_outcome_count a,  cte -- we need the same total for all rows 
 -- get count_a and count_b 
 set search_path = faers;
 drop table if exists standard_drug_outcome_count_a_count_b;
-create table standard_drug_outcome_count_a_count_b as
-select drug_concept_id, outcome_concept_id, 
-drug_outcome_pair_count as count_a, -- count of drug P and outcome R
-(
-	select sum(drug_outcome_pair_count)
-	from standard_drug_outcome_count b
-	where b.drug_concept_id = a.drug_concept_id and b.outcome_concept_id <> a.outcome_concept_id 
-) as count_b -- count of drug P and not(outcome R)
-from standard_drug_outcome_count a;
+
+--##2. b create
+create table standard_drug_outcome_count_a_count_b 
+as with aa  as  
+(select drug_concept_id,sum(drug_outcome_pair_count) as sum_cnt
+	from standard_drug_outcome_count
+	group by drug_concept_id
+)
+select t1.drug_concept_id
+	, outcome_concept_id
+	,drug_outcome_pair_count as count_a
+	,sum_cnt-drug_outcome_pair_count as count_b
+from standard_drug_outcome_count t1
+	left outer join aa  t2
+	on t1.drug_concept_id=t2.drug_concept_id
+;
+
 
 -- get count_c 
 set search_path = faers;
 drop table if exists standard_drug_outcome_count_c;
-create table standard_drug_outcome_count_c as
-select drug_concept_id, outcome_concept_id, 
-(
-	select sum(drug_outcome_pair_count) 
-	from standard_drug_outcome_count c
-	where c.drug_concept_id <> a.drug_concept_id and c.outcome_concept_id = a.outcome_concept_id 
-) as count_c -- count of not(drug P) and outcome R
-from standard_drug_outcome_count a; 
+--##3. C Create
+create table standard_drug_outcome_count_c 
+as with aa  as  
+(select outcome_concept_id,sum(drug_outcome_pair_count) as sum_cnt
+	from standard_drug_outcome_count
+	group by outcome_concept_id
+)
+select t1.drug_concept_id
+	, t1.outcome_concept_id
+	,sum_cnt-drug_outcome_pair_count as count_c
+from standard_drug_outcome_count t1
+	left outer join aa  t2
+	on t1.outcome_concept_id=t2.outcome_concept_id
+;
 
 -- get count d2 
 set search_path = faers;
 drop table if exists standard_drug_outcome_count_d2;
-create table standard_drug_outcome_count_d2 as
-select drug_concept_id, outcome_concept_id, 
+--##4. D 생성
+create table standard_drug_outcome_count_d2 
+as with aa  as  
+(select drug_concept_id,sum(drug_outcome_pair_count) as sum_cnt_aa
+	from faers.standard_drug_outcome_count
+	group by drug_concept_id
+)
+,bb  as  
+(select outcome_concept_id,sum(drug_outcome_pair_count) as sum_cnt_bb
+	from standard_drug_outcome_count
+	group by outcome_concept_id
+)
+
+,uni_t_a as
 (
-	select sum(drug_outcome_pair_count)
-	from standard_drug_outcome_count d2
-	where (d2.drug_concept_id = a.drug_concept_id) or (d2.outcome_concept_id = a.outcome_concept_id)
-) as count_d2 -- count of all cases where drug P or outcome R 
-from standard_drug_outcome_count a;
+	select t1.drug_concept_id
+		, t1.outcome_concept_id
+		,t1.drug_outcome_pair_count 
+		,t2.sum_cnt_aa
+	from standard_drug_outcome_count t1
+		left outer join aa  t2
+		on t1.drug_concept_id=t2.drug_concept_id
+)
+,uni_t_b as
+(
+	select t1.drug_concept_id
+		, t1.outcome_concept_id
+		,t1.drug_outcome_pair_count
+		,t1.sum_cnt_aa
+		,t2.sum_cnt_bb
+	from uni_t_a t1
+		left outer join bb  t2
+		on t1.outcome_concept_id=t2.outcome_concept_id
+)
+select drug_concept_id
+	,outcome_concept_id
+	,sum_cnt_aa+sum_cnt_bb-drug_outcome_pair_count as count_d2
+from uni_t_b;
+
 
 --=============
 
